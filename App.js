@@ -191,9 +191,9 @@ app.post("/commAddExpense/:name", jsonwebtoken, async (req, res) => {
         });
 
         const spender = community.peoples.find(m => m.userId.toString() === req.payload.id);
-        if (spender) {
-            spender.amount.take += amount - splitAmount;
-        }
+        // if (spender) {
+        //     spender.amount.take += amount - splitAmount;
+        // }
 
         const newExpense = {
             date:  Date().split('T')[0],
