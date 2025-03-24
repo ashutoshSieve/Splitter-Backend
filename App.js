@@ -14,7 +14,7 @@ const app = express();
 
 
 app.use(cors({
-    origin: ["http://localhost:3000"],
+    origin: ["https://splitter-friend.netlify.app"],
     methods: ["GET", "POST", "DELETE"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
@@ -43,7 +43,7 @@ app.get('/auth/callback',
           maxAge: 24 * 60 * 60 * 1000
       });
 
-      res.redirect("http://localhost:3000/main");
+      res.redirect("https://splitter-friend.netlify.app/main");
   }
 );
 
