@@ -330,7 +330,7 @@ app.delete("/commDelete/:name", jsonwebtoken , async (req, res) => {
         // ✅ Adjust `take` amount for all involved users
         community.peoples.forEach((person) => {
             if (involvedUsers.includes(person.userId.toString())) {
-                person.amount.take -= deletedAmount;
+                person.amount.give -= deletedAmount;
             }
         });
 
