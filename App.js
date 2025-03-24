@@ -186,7 +186,7 @@ app.post("/commAddExpense/:name", jsonwebtoken, async (req, res) => {
 
         community.peoples.forEach(member => {
             if (members.includes(member.userId.toString())) {
-                member.amount.give += splitAmount;
+                member.amount.take += splitAmount;
             }
         });
 
