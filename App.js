@@ -327,6 +327,9 @@ app.delete("/commDelete/:name", jsonwebtoken , async (req, res) => {
             return res.status(404).json({ message: "Expense record not found or unauthorized to delete" });
         }
 
+        let totalPerson=involvedUsers.length;
+        deletedAmount/=totalPerson;
+        
         // ✅ Adjust `take` amount for all involved users
         community.peoples.forEach((person) => {
             if (involvedUsers.includes(person.userId.toString())) {
