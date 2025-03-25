@@ -107,11 +107,11 @@ app.get("/userHistory", jsonwebtoken, async (req, res) => {
     }
 });
 
-// Enter the community
-app.get("/community/:name", jsonwebtoken, async (req, res) => {
+// community creating
+app.post("/createCommunity", jsonwebtoken, async (req, res) => {
     try {
         if (!req.payload) {
-            return res.status(401).json({ message: "Unauthorized: User not found in token" });
+            return res.status(401).json({ message: "Unauthorized: No user found in token" });
         }
 
         const user = await User.findById(req.payload.id);
@@ -119,28 +119,91 @@ app.get("/community/:name", jsonwebtoken, async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-        // Populate community data with user names
+        const { name } = req.body;
+        if (!name) {
+            return res.status(400).json({ message: "Community name is required" });
+        }
+
+        const existingCommunity = await Community.findOne({ name });
+        if (existingCommunity) {
+            return res.status(400).json({ message: "Community already exists!" });
+        }
+
+        // ✅ Ensure the creator is added correctly with `userId`
+        const newCommunity = new Community({
+            name,
+            peoples: [{ userId: user._id, amount: [] }] // ✅ Empty array since it's an array of objects
+        });
+
+        await newCommunity.save();
+        await User.findByIdAndUpdate(user._id, {
+            $addToSet: { community: newCommunity._id }
+        });
+
+        res.status(201).json({
+            message: "Community created successfully!",
+            community: newCommunity
+        });
+
+    } catch (error) {
+        console.error("❌ Error creating community:", error);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
+    }
+});
+
+// Enter the community
+app.get("/community/:name", jsonwebtoken, async (req, res) => {
+    try {
+        if (!req.payload) {
+            return res.status(401).json({ message: "Unauthorized: User not found in token" });
+        }
+        const storeID = req.payload.id;
+        const user = await User.findById(req.payload.id);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
         let community = await Community.findOne({ name: req.params.name })
             .populate("peoples.userId", "name _id");
 
-        
         if (!community) {
             return res.status(404).json({ message: "Community not found" });
         }
 
-        // Check if user is already in the community
-        const isUserInCommunity = Array.isArray(community.peoples) && community.peoples.some(person =>
+        // Check if the user is already in the community
+        const isUserInCommunity = community.peoples.some(person =>
             person && person.userId && person.userId._id.toString() === user._id.toString()
         );
-        
 
         if (!isUserInCommunity) {
-            // ✅ Fix: Ensure user is added properly with `userId`
-            community = await Community.findOneAndUpdate(
-                { name: req.params.name },
-                { $addToSet: { peoples: { userId: user._id, amount: "0" } } }, // ✅ Correct structure
-                { new: true }
-            ).populate("peoples.userId", "name _id"); // ✅ Populate again after update
+            const newUserEntry = {
+                userId: user._id,
+                amount: community.peoples.map(person => ({
+                    respected_userID: person.userId._id, // Existing users' IDs
+                    give: 0,
+                    take: 0
+                }))
+            };
+
+            // Add the new user to the community
+            community.peoples.push(newUserEntry);
+
+            // Update existing members to include the new user in their amount array
+            community.peoples.forEach(member => {
+                if (member.userId.toString() !== user._id.toString()) {
+                    const alreadyExists = member.amount.some(a => a.respected_userID.toString() === user._id.toString());
+                    if (!alreadyExists) {
+                        member.amount.push({
+                            respected_userID: user._id,
+                            give: 0,
+                            take: 0
+                        });
+                    }
+                }
+            });
+
+            // Save the updated community
+            await community.save();
         }
 
         // 🔹 Ensure User's Community List is Updated
@@ -149,14 +212,16 @@ app.get("/community/:name", jsonwebtoken, async (req, res) => {
         });
 
         res.json({
+            loginUser: storeID,
             name: community.name,
-            members: community.peoples
-            .filter(person => person && person.userId) // ✅ Remove null or missing userId
-            .map(person => ({
+            members: community.peoples.map(person => ({
                 id: person.userId._id.toString(),
                 name: person.userId.name || "Unknown",
-                take: person.amount.take, 
-                give: person.amount.give
+                amounts: person.amount.map(a => ({
+                    respected_userID: a.respected_userID.toString(),
+                    give: a.give,
+                    take: a.take
+                }))
             })),
             expenses: community.expenses || [],
             date: Date()
@@ -167,7 +232,6 @@ app.get("/community/:name", jsonwebtoken, async (req, res) => {
         res.status(500).json({ message: "Error fetching community data", error: err.message });
     }
 });
-
 
 // Add expense to community
 app.post("/commAddExpense/:name", jsonwebtoken, async (req, res) => {
@@ -184,19 +248,34 @@ app.post("/commAddExpense/:name", jsonwebtoken, async (req, res) => {
         const totalMembers = members.length;
         const splitAmount = amount / totalMembers;
 
-        community.peoples.forEach(member => {
-            if (members.includes(member.userId.toString())) {
-                member.amount.take += splitAmount;
+        // Find spender (the user who added the expense)
+        const spender = community.peoples.find(m => m.userId.toString() === req.payload.id);
+        if (!spender) return res.status(404).json({ message: "Spender not found in community" });
+
+        // ✅ Update the spender's `take` for each selected member
+        members.forEach(id => {
+            let existingAmount = spender.amount.find(m => m.respected_userID.toString() === id);
+            if (existingAmount) {
+                existingAmount.take += splitAmount;
             }
         });
 
-        const spender = community.peoples.find(m => m.userId.toString() === req.payload.id);
-        if (spender) {
-            spender.amount.take -= splitAmount;
-        }
+        // ✅ Update each member's `give` for the spender
+        members.forEach(id => {
+            if (id !== req.payload.id) { // Skip if it's the spender
+                const member = community.peoples.find(m => m.userId.toString() === id);
+                if (member) {
+                    let existingAmount = member.amount.find(m => m.respected_userID.toString() === req.payload.id);
+                    if (existingAmount) {
+                        existingAmount.give += splitAmount;
+                    }
+                }
+            }
+        });
+
 
         const newExpense = {
-            date:  Date().split('T')[0],
+            date:  Date(),
             records: [{
                 userId: req.payload.id,
                 desc: description,
@@ -205,11 +284,80 @@ app.post("/commAddExpense/:name", jsonwebtoken, async (req, res) => {
             }]
         };
         community.expenses.push(newExpense);
+
+
+        // Save the updated community
         await community.save();
 
-        res.json({ message: "Expense added successfully", expense: newExpense });
+        res.json({ message: "Expense added successfully" });
+
     } catch (error) {
         res.status(500).json({ message: "Server error", error: error.message });
+    }
+});
+
+// Delete the expense in community 
+app.delete("/commDelete/:name", jsonwebtoken , async (req, res) => {
+    const { name } = req.params;
+    const { id } = req.body; 
+    const userId = req.payload.id;
+
+    if (!id) {
+        return res.status(400).json({ message: "Expense ID is required" });
+    }
+
+    try {
+        const community = await Community.findOne({ name });
+        if (!community) {
+            return res.status(404).json({ message: "Community not found" });
+        }
+
+        let expenseDeleted = false;
+        let deletedAmount = 0;
+        let involvedUsers = [];
+
+        // ✅ Use `for...of` to iterate and delete the expense
+        for (const expense of community.expenses) {
+            const recordIndex = expense.records.findIndex(record => record._id.toString() === id);
+
+            if (recordIndex !== -1) {
+                const record = expense.records[recordIndex];
+
+                // ✅ Ensure only the creator can delete it
+                if (record.userId.toString() !== userId) {
+                    return res.status(403).json({ message: "Forbidden: You can only delete your own expenses" });
+                }
+
+                // ✅ Remove the record
+                expense.records.splice(recordIndex, 1);
+                expenseDeleted = true;
+                involvedUsers = record.users;
+                deletedAmount = record.amount;
+                break; // Exit loop once found
+            }
+        }
+
+        if (!expenseDeleted) {
+            return res.status(404).json({ message: "Expense record not found or unauthorized to delete" });
+        }
+
+        // ✅ Adjust `take` amount for all involved users
+        let totalPerson=involvedUsers.length;
+        deletedAmount/=totalPerson;
+
+        community.peoples.forEach((person) => {
+            if (involvedUsers.includes(person.userId.toString())) {
+                person.amount.take -= deletedAmount;
+            }
+        });
+
+        // ✅ Save the updated community document
+        await community.save();
+
+        res.status(200).json({ message: "Expense deleted successfully, and balances updated" });
+    } catch (error) {
+        console.error("Error deleting expense:", error);
+        res.status(500).json({ message: "Internal Server Error" });
     }
 });
 
@@ -219,7 +367,7 @@ app.get("/todayExpense/:name", jsonwebtoken, async (req, res) => {
         const community = await Community.findOne({ name: req.params.name });
         if (!community) return res.status(404).json({ message: "Community not found" });
         
-        const todayDate = Date().split('T')[0];
+        const todayDate = Date();
         const todayExpenses = community.expenses.filter(expense => expense.date === todayDate);
         
         res.status(200).json({ expenses: todayExpenses });
@@ -280,70 +428,6 @@ app.get("/readInDetails/:name/:ID", async (req, res) => {
     } catch (error) {
         console.error("Error fetching expense details:", error);
         return res.status(500).json({ message: "Internal server error" });
-    }
-});
-
-app.delete("/commDelete/:name", jsonwebtoken , async (req, res) => {
-    const { name } = req.params;
-    const { id } = req.body; 
-    const userId = req.payload.id;
-
-    if (!id) {
-        return res.status(400).json({ message: "Expense ID is required" });
-    }
-
-    try {
-        const community = await Community.findOne({ name });
-        if (!community) {
-            return res.status(404).json({ message: "Community not found" });
-        }
-
-        let expenseDeleted = false;
-        let deletedAmount = 0;
-        let involvedUsers = [];
-
-        // ✅ Use `for...of` to iterate and delete the expense
-        for (const expense of community.expenses) {
-            const recordIndex = expense.records.findIndex(record => record._id.toString() === id);
-
-            if (recordIndex !== -1) {
-                const record = expense.records[recordIndex];
-
-                // ✅ Ensure only the creator can delete it
-                if (record.userId.toString() !== userId) {
-                    return res.status(403).json({ message: "Forbidden: You can only delete your own expenses" });
-                }
-
-                // ✅ Remove the record
-                expense.records.splice(recordIndex, 1);
-                expenseDeleted = true;
-                deletedAmount = record.amount;
-                involvedUsers = record.users;
-                break; // Exit loop once found
-            }
-        }
-
-        if (!expenseDeleted) {
-            return res.status(404).json({ message: "Expense record not found or unauthorized to delete" });
-        }
-
-        let totalPerson=involvedUsers.length;
-        deletedAmount/=totalPerson;
-        
-        // ✅ Adjust `take` amount for all involved users
-        community.peoples.forEach((person) => {
-            if (involvedUsers.includes(person.userId.toString())) {
-                person.amount.give -= deletedAmount;
-            }
-        });
-
-        // ✅ Save the updated community document
-        await community.save();
-
-        res.status(200).json({ message: "Expense deleted successfully, and balances updated" });
-    } catch (error) {
-        console.error("Error deleting expense:", error);
-        res.status(500).json({ message: "Internal Server Error" });
     }
 });
 
@@ -426,50 +510,6 @@ app.post("/addItems", jsonwebtoken, async (req, res) => {
     } catch (error) {
         console.error("Error adding expense:", error);
         res.status(500).json({ message: "Internal server error" });
-    }
-});
-
-// community creating
-app.post("/createCommunity", jsonwebtoken, async (req, res) => {
-    try {
-        if (!req.payload) {
-            return res.status(401).json({ message: "Unauthorized: No user found in token" });
-        }
-
-        const user = await User.findById(req.payload.id);
-        if (!user) {
-            return res.status(404).json({ message: "User not found" });
-        }
-
-        const { name } = req.body;
-        if (!name) {
-            return res.status(400).json({ message: "Community name is required" });
-        }
-
-        const existingCommunity = await Community.findOne({ name });
-        if (existingCommunity) {
-            return res.status(400).json({ message: "Community already exists!" });
-        }
-
-        // ✅ Ensure the creator is added correctly with `userId`
-        const newCommunity = new Community({
-            name,
-            peoples: [{ userId: user._id, amount: "0" }] // ✅ Corrected structure
-        });
-
-        await newCommunity.save();
-        await User.findByIdAndUpdate(user._id, {
-            $addToSet: { community: newCommunity._id }
-        });
-
-        res.status(201).json({
-            message: "Community created successfully!",
-            community: newCommunity
-        });
-
-    } catch (error) {
-        console.error("❌ Error creating community:", error);
-        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 });
 
