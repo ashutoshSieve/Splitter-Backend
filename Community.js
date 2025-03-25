@@ -7,15 +7,18 @@ mongoose.connect(process.env.URL)
   .catch((error) => console.error("MongoDB connection error:", error));
 
 
+const AmountSchema = new mongoose.Schema({
+    give: { type: Number, default: 0 },  // ✅ Default to 0
+    take: { type: Number, default: 0 },   // ✅ Default to 0
+    respected_userID: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+});
+
 const CommunitySchema = new mongoose.Schema({
     name: String,
     peoples: [
         {
             userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-            amount: {
-                give: { type: Number, default: 0 },  // ✅ Default to 0
-                take: { type: Number, default: 0 }   // ✅ Default to 0
-            }
+            amount: [AmountSchema]
         }
     ],
     expenses: [
