@@ -298,13 +298,14 @@ app.post("/commAddExpense/:name", jsonwebtoken, async (req, res) => {
 
 
 // Delete an expense in a community 
-app.delete("/commDeleteExpense/:name", jsonwebtoken, async (req, res) => {
+app.delete("/commDelete/:name", jsonwebtoken, async (req, res) => {
     try {
-        const { id, members } = req.body; // Receiving expense ID and involved members
+        const { id } = req.body; // Receiving expense ID
         const userId = req.payload.id;
 
-        if (!id || !members || !members.length) {
-            return res.status(400).json({ message: "Expense ID and members are required" });
+        
+        if (!id) {
+            return res.status(400).json({ message: "Expense ID is required" });
         }
 
         const community = await Community.findOne({ name: req.params.name });
@@ -314,8 +315,9 @@ app.delete("/commDeleteExpense/:name", jsonwebtoken, async (req, res) => {
 
         let expenseDeleted = false;
         let deletedAmount = 0;
+        let members = [];
 
-        // ✅ Find and delete the expense
+        // ✅ Find the expense record & extract involved users
         for (const expense of community.expenses) {
             const recordIndex = expense.records.findIndex(record => record._id.toString() === id);
 
@@ -327,10 +329,13 @@ app.delete("/commDeleteExpense/:name", jsonwebtoken, async (req, res) => {
                     return res.status(403).json({ message: "Forbidden: You can only delete your own expenses" });
                 }
 
+                // ✅ Extract `members` before deleting the record
+                members = record.users;
+                deletedAmount = record.amount;
+
                 // ✅ Remove the record
                 expense.records.splice(recordIndex, 1);
                 expenseDeleted = true;
-                deletedAmount = record.amount;
                 break; // Exit loop once found
             }
         }
@@ -339,14 +344,18 @@ app.delete("/commDeleteExpense/:name", jsonwebtoken, async (req, res) => {
             return res.status(404).json({ message: "Expense record not found or unauthorized to delete" });
         }
 
+        if (!members || members.length === 0) {
+            return res.status(400).json({ message: "Expense does not have valid members" });
+        }
+
         // ✅ Calculate per-person split amount
         const splitAmount = deletedAmount / members.length;
 
         // ✅ Update the spender's `take` for each selected member
         const spender = community.peoples.find(m => m.userId.toString() === userId);
         if (spender) {
-            members.forEach(id => {
-                let existingAmount = spender.amount.find(m => m.respected_userID.toString() === id);
+            members.forEach(memberId => {
+                let existingAmount = spender.amount.find(m => m.respected_userID.toString() === memberId);
                 if (existingAmount) {
                     existingAmount.take -= splitAmount; // Reduce `take`
                 }
@@ -354,9 +363,9 @@ app.delete("/commDeleteExpense/:name", jsonwebtoken, async (req, res) => {
         }
 
         // ✅ Update each member's `give` for the spender
-        members.forEach(id => {
-            if (id !== userId) { // Skip if it's the spender
-                const member = community.peoples.find(m => m.userId.toString() === id);
+        members.forEach(memberId => {
+            if (memberId !== userId) { // Skip if it's the spender
+                const member = community.peoples.find(m => m.userId.toString() === memberId);
                 if (member) {
                     let existingAmount = member.amount.find(m => m.respected_userID.toString() === userId);
                     if (existingAmount) {
@@ -376,6 +385,7 @@ app.delete("/commDeleteExpense/:name", jsonwebtoken, async (req, res) => {
         res.status(500).json({ message: "Internal Server Error" });
     }
 });
+
 
 
 // Get today's expenses
