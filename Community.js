@@ -8,8 +8,8 @@ mongoose.connect(process.env.URL)
 
 
 const AmountSchema = new mongoose.Schema({
-    give: { type: Number, default: 0 },  // ✅ Default to 0
-    take: { type: Number, default: 0 },   // ✅ Default to 0
+    give: { type: Number, default: 0 },  
+    take: { type: Number, default: 0 },   
     respected_userID: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 });
 
@@ -29,10 +29,10 @@ const CommunitySchema = new mongoose.Schema({
                     {
                         userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
                         desc: String,
-                        amount: Number, // ✅ Changed from String to Number
+                        amount: Number, 
                         users: []
                     },
-                    { _id: true } // ✅ Ensures each record has a unique `_id`
+                    { _id: true } 
                 )
             ]
         }
