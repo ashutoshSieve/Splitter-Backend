@@ -542,28 +542,38 @@ app.post("/addItems", jsonwebtoken, async (req, res) => {
 
 
 app.delete("/deleteItem", jsonwebtoken, async (req, res) => {
-    try {
-        const { id } = req.body;  
-        
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ message: "Invalid expense ID" });
-        }
+  try {
+    const { id } = req.body;
 
-        const updatedUser = await User.findOneAndUpdate(
-            { "expense.items._id": id }, 
-            { $pull: { "expense.$.items": { _id: id } } },  
-            { new: true } 
-        );
-
-        if (!updatedUser) {
-            return res.status(404).json({ message: "Expense not found" });
-        }
-
-        res.json({ message: "Expense deleted successfully", user: updatedUser });
-    } catch (error) {
-        console.error("Error deleting expense:", error);
-        res.status(500).json({ message: "Server error", error });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid expense ID" });
     }
+
+    const user = await User.findOneAndUpdate(
+      { "expense.items._id": id },
+      { $pull: { "expense.$.items": { _id: id } } },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "Expense not found" });
+    }
+
+    const cleanedUser = await User.findOneAndUpdate(
+      { _id: user._id },
+      { $pull: { expense: { items: { $size: 0 } } } },
+      { new: true }
+    );
+
+    res.json({
+      message: "Expense deleted successfully",
+      user: cleanedUser
+    });
+
+  } catch (error) {
+    console.error("Error deleting expense:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 
@@ -572,3 +582,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
+
