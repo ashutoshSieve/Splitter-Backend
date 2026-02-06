@@ -561,7 +561,7 @@ app.delete("/deleteItem", jsonwebtoken, async (req, res) => {
 
     const cleanedUser = await User.findOneAndUpdate(
       { _id: user._id },
-      { $pull: { expense: { items: { $size: 0 } } } },
+      { $pull: { expense: { items: { $eq: [] } } } },
       { new: true }
     );
 
@@ -582,4 +582,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
+
 
