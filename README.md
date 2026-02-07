@@ -63,12 +63,3 @@ Users can easily **share an invite link**, track payments, and maintain all expe
 4. JWT is verified for protected API routes
 
 ---
-
-## 📦 Installation & Setup
-
-### 1️⃣ Clone the repository
-```bash
-git clone https://github.com/your-username/your-repo-name.git
-cd your-repo-name
-
-
