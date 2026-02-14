@@ -52,7 +52,41 @@ Users can easily **share an invite link**, track payments, and maintain all expe
 
 ---
 
+### Project Architecture 
 
+backend/
+├─ config/
+│  └─ index.js                 # App-level config: env loading, constants, passport/jwt configs, etc.
+│
+├─ controllers/
+│  ├─ auth.controller.js       # Login/Signup/Token refresh/Logout handlers
+│  ├─ community.controller.js  # Create community, add/remove members, split logic
+│  └─ user.controller.js       # User profile & preferences handlers
+│
+├─ db/
+│  └─ connect.js               # DB connection (e.g., Mongoose connect & lifecycle hooks)
+│
+├─ middlewares/
+│  ├─ errorHandler.middleware.js # Centralized error handling (maps errors → consistent responses)
+│  ├─ jwt.middleware.js          # JWT verify/extract user; guards protected routes
+│  └─ passport.middleware.js     # Passport strategy setup (e.g., JWT/local)
+│
+├─ models/
+│  ├─ community.js             # Community schema/model (members, balances, metadata)
+│  └─ user.js                  # User schema/model (auth, profile, roles)
+│
+├─ routes/
+│  ├─ auth.routes.js           # /api/auth/* routes (login, signup, refresh)
+│  ├─ community.routes.js      # /api/communities/* routes (CRUD, split, settle)
+│  └─ user.routes.js           # /api/users/* routes (me, update, list)
+│
+├─ utils/
+│  └─ date.util.js             # Date/time helpers (formatting, ranges)
+│
+├─ .env                        # Environment variables (NOT committed)
+├─ .gitignore                  # Git ignore rules
+├─ app.js                      # Express app bootstrap (middlewares, routes, 404)
+└─ server.js                   # Server entry (port, DB init, start/stop)
 ---
 
 ## 🔐 Authentication Flow
