@@ -9,7 +9,7 @@ const app = express();
 
 
 app.use(cors({
-  origin: ["http://localhost:3000"],
+  origin: ["https://splitter-friend.netlify.app"],
   methods: ["GET", "POST", "DELETE"],
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"]
@@ -34,5 +34,6 @@ app.use("/", communityRoutes);
 
 const errorHandler = require("./middlewares/errorHandler.middleware");
 app.use(errorHandler);
+
 
 module.exports = app;
